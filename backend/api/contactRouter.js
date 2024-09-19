@@ -4,11 +4,10 @@ import Joi from "joi";
 
 const router = express.Router();
 
-// Define a Joi schema for contact validation
 const contactSchema = Joi.object({
     name: Joi.string().required(),
     email: Joi.string().email().required(),
-    phone: Joi.string().pattern(/^\+\d{2} \d{10}$/).required(), // Adjust pattern as necessary
+    phone: Joi.string().pattern(/^\+\d{2} \d{10}$/).required(), 
     dob: Joi.date().iso().required(),
     age: Joi.number().integer().min(0).required()
 });
