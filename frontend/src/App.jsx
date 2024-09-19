@@ -1,17 +1,26 @@
 import React, { useState, useRef } from 'react';
-import { AgGridReact } from 'ag-grid-react';
 import Papa from 'papaparse';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import axios from 'axios';
 import moment from 'moment';
+import { Formik, Form } from 'formik';
+import * as Yup from 'yup';
+import Modal from './components/Modal';
+import Button from './components/Button';
+import FormField from './components/FormField';
+import Table from './components/Table';
+
+const contactSchema = Yup.object().shape({
+  Name: Yup.string().required('Name is required'),
+  Email: Yup.string().email('Invalid email format').required('Email is required'),
+  Phone: Yup.string().matches(/^\+\d{2} \d{10}$/, 'Invalid phone number format').required('Phone is required'),
+  Dob: Yup.date().required('Date of Birth is required'),
+  Age: Yup.number().integer().positive().required('Age is required'),
+});
 
 const ContactManager = () => {
   const [rowData, setRowData] = useState([]);
   const [editModal, setEditModal] = useState({ open: false, data: null });
   const [addModal, setAddModal] = useState(false);
-  const [newContact, setNewContact] = useState({});
-  const [updatedRow, setUpdatedRow] = useState({});
   const fileInputRef = useRef(null);
 
   // Handle CSV File Upload and Parse it
@@ -43,7 +52,6 @@ const ContactManager = () => {
     setRowData(sortedData);
   };
 
-  // Validate Email and Phone Format
   const validateData = (data) => {
     return data.map((row) => {
       const emailValid = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(row.Email);
@@ -60,17 +68,17 @@ const ContactManager = () => {
 
     const mapContacts = (inputArray) => {
       return inputArray.map(input => ({
-          name: input.Name, 
-          email: input.Email, 
-          phone: input.Phone, 
-          dob: input['Date of Birth'],
-          age: parseInt(input.Age)
+        name: input.Name,
+        email: input.Email,
+        phone: input.Phone,
+        dob: input['Date of Birth'],
+        age: parseInt(input.Age),
       }));
     };
 
     if (allValid) {
       try {
-        const body = {"contacts": mapContacts(rowData)};
+        const body = { contacts: mapContacts(rowData) };
         const response = await axios.post('http://localhost:8000/api/contacts', body);
         console.log('Data submitted successfully:', response);
         alert('Data submitted successfully!');
@@ -86,13 +94,12 @@ const ContactManager = () => {
 
   // Handle Edit
   const handleEdit = (data) => {
-    setUpdatedRow(data);
     setEditModal({ open: true, data });
   };
 
   // Handle Save Edit
-  const handleSaveEdit = () => {
-    const updatedData = rowData.map(row => row.Name === updatedRow.Name ? updatedRow : row);
+  const handleSaveEdit = (values) => {
+    const updatedData = rowData.map(row => row.Name === values.Name ? values : row);
     const validatedData = validateData(updatedData);
     sortDataByValidity(validatedData);
     setEditModal({ open: false, data: null });
@@ -105,22 +112,16 @@ const ContactManager = () => {
   };
 
   // Handle Add Contact
-  const handleAddContact = () => {
-    if (!newContact.Name || !newContact.Email || !newContact.Phone) {
-      alert('Please fill in all fields.');
-      return;
-    }
-
+  const handleAddContact = (values) => {
     const validatedNewContact = {
-      ...newContact,
-      emailValid: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(newContact.Email),
-      phoneValid: /^\+\d{2} \d{10}$/.test(newContact.Phone),
+      ...values,
+      emailValid: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(values.Email),
+      phoneValid: /^\+\d{2} \d{10}$/.test(values.Phone),
     };
 
     const newData = [...rowData, validatedNewContact];
     sortDataByValidity(newData);
     setAddModal(false);
-    setNewContact({});
   };
 
   // Handle Reset
@@ -138,49 +139,36 @@ const ContactManager = () => {
     { headerName: 'Name', field: 'Name', sortable: true, filter: true },
     { headerName: 'Email', field: 'Email', sortable: true, filter: true },
     { headerName: 'Phone', field: 'Phone', sortable: true, filter: true },
-    { headerName: 'Date of Birth', field: 'Date of Birth', sortable: true, filter: true,
+    { headerName: 'Date of Birth', field: 'Dob', sortable: true, filter: true,
       valueFormatter: (params) => {
-          const date = new Date(params.value);
-          return moment(date).format('DD-MM-YYYY');
+        const date = new Date(params.value);
+        return moment(date).format('DD-MM-YYYY');
       }},
     { headerName: 'Age', field: 'Age', sortable: true, filter: true },
     {
       headerName: 'Actions',
       field: "actions",
-      cellRenderer: (params) => {
-        return (
-          <div className="flex space-x-2">
-            <button
-              onClick={() => handleEdit(params.data)}
-              className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => handleDelete(params.data)}
-              className="bg-red-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-red-800"
-            >
-              Delete
-            </button>
-            <button
+      cellRenderer: (params) => (
+        <div className="flex space-x-2">
+          <Button onClick={() => handleEdit(params.data)} className="bg-blue-300 hover:bg-blue-500">Edit</Button>
+          <Button onClick={() => handleDelete(params.data)} className="bg-red-300 hover:bg-red-500">Delete</Button>
+          <Button
               className={`${
                 params.data.emailValid && params.data.phoneValid
-                  ? 'bg-green-500 hover:bg-green-800'
-                  : 'bg-red-500 hover:bg-red-800'
-              } text-white px-4 py-2 text-xs font-medium rounded `}
+                  ? 'bg-green-300 hover:bg-green-500'
+                  : 'bg-red-300 hover:bg-red-500'
+              } `}
             >
               {params.data.emailValid && params.data.phoneValid ? '✔' : '✖'}
-            </button>
-          </div>
-        );
-      }
+            </Button>       
+        </div>
+      )
     }
   ];
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto p-4">
       <h1 className="text-3xl font-bold mb-4">Contact Manager</h1>
-
       <input
         type="file"
         accept=".csv"
@@ -192,146 +180,55 @@ const ContactManager = () => {
       {rowData.length > 0 && (
         <>
           <div className="my-4 flex justify-end space-x-4">
-            <button onClick={() => setAddModal(true)} className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800">Add</button>
-            <button onClick={handleReset} className="bg-gray-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-gray-800">Reset</button>
-            <button
-              onClick={submitData}
-              className={`px-4 py-2 text-xs font-medium rounded bg-green-500 hover:bg-green-800 text-white`}
-            >
-              Submit
-            </button>
+            <Button onClick={() => setAddModal(true)} className="bg-blue-300 hover:bg-blue-500">Add Contact</Button>
+            <Button onClick={handleReset} className="bg-gray-300 hover:bg-gray-500">Reset</Button>
+            <Button onClick={submitData} className="bg-green-300 hover:bg-green-500">Submit</Button>
           </div>
-
-          <div className="ag-theme-alpine" style={{ width: '100%' }}>
-            <AgGridReact
-              rowData={rowData}
-              columnDefs={columnDefs}
-              domLayout="autoHeight"
-            />
-          </div>
-        </>
+          <Table rowData={rowData} columnDefs={columnDefs} />
+        </>      
       )}
 
-     
-      {/* Add Modal */}
-      {addModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-700 bg-opacity-50">
-          <div className="bg-white p-4 rounded shadow-lg w-1/3">
-            <h2 className="text-xl font-bold mb-4">Add Contact</h2>
-            <div className="mb-4">
-              <label className="block mb-2">Name</label>
-              <input
-                type="text"
-                value={newContact.Name || ''}
-                onChange={(e) => setNewContact({ ...newContact, Name: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Email</label>
-              <input
-                type="text"
-                value={newContact.Email || ''}
-                onChange={(e) => setNewContact({ ...newContact, Email: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Phone</label>
-              <input
-                type="text"
-                value={newContact.Phone || ''}
-                onChange={(e) => setNewContact({ ...newContact, Phone: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Date of Birth</label>
-              <input
-                type="date"
-                value={newContact.dob || ''}
-                onChange={(e) => setNewContact({ ...newContact, dob: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Age</label>
-              <input
-                type="text"
-                value={newContact.age || ''}
-                onChange={(e) => setNewContact({ ...newContact, age: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
+      <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="Add Contact">
+        <Formik
+          initialValues={{ Name: '', Email: '', Phone: '', Dob: '', Age: '' }}
+          validationSchema={contactSchema}
+          onSubmit={handleAddContact}
+        >
+          <Form>
+            <FormField label="Name" name="Name" />
+            <FormField label="Email" name="Email" type="email" />
+            <FormField label="Phone" name="Phone" />
+            <FormField label="Date of Birth" name="Dob" type="date" />
+            <FormField label="Age" name="Age" type="number" />
             <div className="flex justify-end space-x-4">
-              <button onClick={handleAddContact} className="bg-green-500 text-white px-4 py-2 text-xs font-medium rounded">Add</button>
-              <button onClick={() => setAddModal(false)} className="bg-gray-500 text-white px-4 py-2 text-xs font-medium rounded">Cancel</button>
+              <Button type="submit" className="bg-blue-500 hover:bg-blue-700">Add</Button>
+              <Button type="button" onClick={() => setAddModal(false)} className="bg-gray-500 hover:bg-gray-700">Cancel</Button>        
             </div>
-          </div>
-        </div>
-      )}
+          </Form>
+        </Formik>
+      </Modal>
 
-          {/* Edit Modal */}
-          {editModal.open && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-700 bg-opacity-50">
-          <div className="bg-white p-4 rounded shadow-lg w-1/3">
-            <h2 className="text-xl font-bold mb-4">Edit Contact</h2>
-            <div className="mb-4">
-              <label className="block mb-2">Name</label>
-              <input
-                type="text"
-                value={updatedRow.Name || ''}
-                onChange={(e) => setUpdatedRow({ ...updatedRow, Name: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Email</label>
-              <input
-                type="text"
-                value={updatedRow.Email || ''}
-                onChange={(e) => setUpdatedRow({ ...updatedRow, Email: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Phone</label>
-              <input
-                type="text"
-                value={updatedRow.Phone || ''}
-                onChange={(e) => setUpdatedRow({ ...updatedRow, Phone: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Date of Birth</label>
-              <input
-                type="text"
-                value={updatedRow.dob || ''}
-                onChange={(e) => setUpdatedRow({ ...updatedRow, dob: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Age</label>
-              <input
-                type="text"
-                value={updatedRow.age || ''}
-                onChange={(e) => setUpdatedRow({ ...updatedRow, age: e.target.value })}
-                className="w-full p-2 border border-gray-400 rounded"
-              />
-            </div>
+      <Modal isOpen={editModal.open} onClose={() => setEditModal({ open: false, data: null })} title="Edit Contact">
+        <Formik
+          initialValues={editModal.data || { Name: '', Email: '', Phone: '', Dob: '', Age: '' }}
+          validationSchema={contactSchema}
+          onSubmit={handleSaveEdit}
+        >
+          <Form>
+            <FormField label="Name" name="Name" />
+            <FormField label="Email" name="Email" type="email" />
+            <FormField label="Phone" name="Phone" />
+            <FormField label="Date of Birth" name="Dob" type="date" />
+            <FormField label="Age" name="Age" type="number" />
             <div className="flex justify-end space-x-4">
-              <button onClick={handleSaveEdit} className="bg-green-500 text-white px-4 py-2 text-xs font-medium rounded">Save</button>
-              <button onClick={() => setEditModal({ open: false, data: null })} className="bg-gray-500 text-white px-4 py-2 text-xs font-medium rounded">Cancel</button>
+              <Button type="submit" className="bg-blue-500 hover:bg-blue-700">Save</Button>
+              <Button type="button" onClick={() => setEditModal({ open: false, data: null })} className="bg-gray-500 hover:bg-gray-700">Cancel</Button>
             </div>
-          </div>
-        </div>
-      )}
+          </Form>
+        </Formik>
+      </Modal>
     </div>
   );
 };
 
 export default ContactManager;
-
-
