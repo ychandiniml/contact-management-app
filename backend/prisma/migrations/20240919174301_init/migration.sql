@@ -4,6 +4,6 @@ CREATE TABLE "Contact" (
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
-    "dob" DATETIME NOT NULL,
+    "dob" TEXT NOT NULL,
     "age" INTEGER NOT NULL
 );

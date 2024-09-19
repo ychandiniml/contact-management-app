@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import Papa from 'papaparse';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
+import axios from 'axios';
+import moment from 'moment';
 
 const ContactManager = () => {
   const [rowData, setRowData] = useState([]);
-  const [isValid, setIsValid] = useState(false);
   const [editModal, setEditModal] = useState({ open: false, data: null });
   const [addModal, setAddModal] = useState(false);
   const [newContact, setNewContact] = useState({});
   const [updatedRow, setUpdatedRow] = useState({});
+  const fileInputRef = useRef(null);
 
   // Handle CSV File Upload and Parse it
   const handleFileUpload = (e) => {
@@ -20,14 +22,25 @@ const ContactManager = () => {
         header: true,
         skipEmptyLines: true,
         complete: function (results) {
-          setRowData(results.data.map(item => ({
+          const parsedData = results.data.map(item => ({
             ...item,
             emailValid: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(item.Email),
             phoneValid: /^\+\d{2} \d{10}$/.test(item.Phone),
-          })));
+          }));
+          sortDataByValidity(parsedData);
         }
       });
     }
+  };
+
+  // Sort data with invalid entries on top
+  const sortDataByValidity = (data) => {
+    const sortedData = [...data].sort((a, b) => {
+      const aInvalid = !a.emailValid || !a.phoneValid;
+      const bInvalid = !b.emailValid || !b.phoneValid;
+      return bInvalid - aInvalid;
+    });
+    setRowData(sortedData);
   };
 
   // Validate Email and Phone Format
@@ -39,58 +52,33 @@ const ContactManager = () => {
     });
   };
 
-  // Check validity of the data
-  const checkAllValid = () => {
+  // Check validity and submit data
+  const submitData = async () => {
     const validatedData = validateData(rowData);
-    setRowData(validatedData);
+    sortDataByValidity(validatedData);
     const allValid = validatedData.every(row => row.emailValid && row.phoneValid);
-    setIsValid(allValid);
-  };
 
-  const columnDefs = [
-    { headerName: 'Name', field: 'Name', sortable: true, filter: true},
-    { headerName: 'Email', field: 'Email', sortable: true, filter: true },
-    { headerName: 'Phone', field: 'Phone', sortable: true, filter: true },
-    { headerName: 'Date of Birth', field: 'dob', sortable: true, filter: true },
-    { headerName: 'Age', field: 'age', sortable: true, filter: true},
-    {
-      headerName: 'Actions',
-      field: "actions",
-      cellRenderer: (params) => {
-        return (
-        <div className="flex space-x-2">
-          <button 
-            onClick={() => handleEdit(params.data)} 
-            className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800"
-          >
-            Edit
-          </button>
-          <button 
-            onClick={() => handleDelete(params.data)} 
-            className="bg-red-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-red-800"
-          >
-            Delete
-          </button>
-          <button 
-            className={`${
-              params.data.emailValid && params.data.phoneValid 
-                ? 'bg-green-500 hover:bg-green-800' 
-                : 'bg-red-500 hover:bg-red-800'
-            } text-white px-4 py-2 text-xs font-medium rounded `}
-          >
-            {params.data.emailValid && params.data.phoneValid ? '✔' : '✖'}
-          </button>
-        </div>
-         );      
-        }
-    }
-  ];
-  
+    const mapContacts = (inputArray) => {
+      return inputArray.map(input => ({
+          name: input.Name, 
+          email: input.Email, 
+          phone: input.Phone, 
+          dob: input['Date of Birth'],
+          age: parseInt(input.Age)
+      }));
+    };
 
-  // Handle submission of the data
-  const submitData = () => {
-    if (isValid) {
-      console.log('Submitting valid data:', rowData);
+    if (allValid) {
+      try {
+        const body = {"contacts": mapContacts(rowData)};
+        const response = await axios.post('http://localhost:8000/api/contacts', body);
+        console.log('Data submitted successfully:', response);
+        alert('Data submitted successfully!');
+        setRowData([]); // Clear the table after submission
+      } catch (error) {
+        console.error('Error submitting data:', error);
+        alert('Failed to submit data. Please try again.');
+      }
     } else {
       alert('Please correct the errors before submitting.');
     }
@@ -105,13 +93,15 @@ const ContactManager = () => {
   // Handle Save Edit
   const handleSaveEdit = () => {
     const updatedData = rowData.map(row => row.Name === updatedRow.Name ? updatedRow : row);
-    setRowData(validateData(updatedData));
+    const validatedData = validateData(updatedData);
+    sortDataByValidity(validatedData);
     setEditModal({ open: false, data: null });
   };
 
   // Handle Delete
   const handleDelete = (data) => {
-    setRowData(rowData.filter(row => row.Name !== data.Name));
+    const filteredData = rowData.filter(row => row.Name !== data.Name);
+    setRowData(filteredData);
   };
 
   // Handle Add Contact
@@ -120,14 +110,15 @@ const ContactManager = () => {
       alert('Please fill in all fields.');
       return;
     }
-    
+
     const validatedNewContact = {
       ...newContact,
       emailValid: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(newContact.Email),
       phoneValid: /^\+\d{2} \d{10}$/.test(newContact.Phone),
     };
-    
-    setRowData([...rowData, validatedNewContact]);
+
+    const newData = [...rowData, validatedNewContact];
+    sortDataByValidity(newData);
     setAddModal(false);
     setNewContact({});
   };
@@ -137,43 +128,91 @@ const ContactManager = () => {
     const confirmReset = window.confirm('Are you sure you want to reset the table?');
     if (confirmReset) {
       setRowData([]);
-      setIsValid(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''; // Reset the file input
+      }
     }
   };
+
+  const columnDefs = [
+    { headerName: 'Name', field: 'Name', sortable: true, filter: true },
+    { headerName: 'Email', field: 'Email', sortable: true, filter: true },
+    { headerName: 'Phone', field: 'Phone', sortable: true, filter: true },
+    { headerName: 'Date of Birth', field: 'Date of Birth', sortable: true, filter: true,
+      valueFormatter: (params) => {
+          const date = new Date(params.value);
+          return moment(date).format('DD-MM-YYYY');
+      }},
+    { headerName: 'Age', field: 'Age', sortable: true, filter: true },
+    {
+      headerName: 'Actions',
+      field: "actions",
+      cellRenderer: (params) => {
+        return (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => handleEdit(params.data)}
+              className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => handleDelete(params.data)}
+              className="bg-red-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-red-800"
+            >
+              Delete
+            </button>
+            <button
+              className={`${
+                params.data.emailValid && params.data.phoneValid
+                  ? 'bg-green-500 hover:bg-green-800'
+                  : 'bg-red-500 hover:bg-red-800'
+              } text-white px-4 py-2 text-xs font-medium rounded `}
+            >
+              {params.data.emailValid && params.data.phoneValid ? '✔' : '✖'}
+            </button>
+          </div>
+        );
+      }
+    }
+  ];
 
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-4">Contact Manager</h1>
-      
-      <input 
-        type="file" 
-        accept=".csv" 
-        onChange={handleFileUpload} 
+
+      <input
+        type="file"
+        accept=".csv"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
         className="mb-4 p-2 border border-gray-400"
       />
 
       {rowData.length > 0 && (
         <>
-          <div className="ag-theme-alpine" style={{ width: '100%' }}>
-            <div className="my-4 flex justify-end space-x-4">
-              <button onClick={() => setAddModal(true)} className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800">Add</button>
-              <button onClick={handleReset} className="bg-gray-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-gray-800">Reset</button>
-            </div>
+          <div className="my-4 flex justify-end space-x-4">
+            <button onClick={() => setAddModal(true)} className="bg-blue-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-blue-800">Add</button>
+            <button onClick={handleReset} className="bg-gray-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-gray-800">Reset</button>
+            <button
+              onClick={submitData}
+              className={`px-4 py-2 text-xs font-medium rounded bg-green-500 hover:bg-green-800 text-white`}
+            >
+              Submit
+            </button>
+          </div>
 
+          <div className="ag-theme-alpine" style={{ width: '100%' }}>
             <AgGridReact
               rowData={rowData}
               columnDefs={columnDefs}
               domLayout="autoHeight"
             />
           </div>
-
-          <div className="my-4 flex justify-center space-x-4">
-            <button onClick={checkAllValid} className="bg-yellow-500 text-white px-4 py-2 text-xs font-medium rounded hover:bg-yellow-800">Check Validity</button>
-            <button onClick={submitData} className={`px-4 py-2 text-xs font-medium rounded ${isValid ? 'bg-green-500 hover:bg-green-800' : 'bg-red-500 hover:bg-red-800' } text-white`}>Submit</button>
-          </div>
         </>
       )}
 
+     
       {/* Add Modal */}
       {addModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-700 bg-opacity-50">
@@ -209,7 +248,7 @@ const ContactManager = () => {
             <div className="mb-4">
               <label className="block mb-2">Date of Birth</label>
               <input
-                type="text"
+                type="date"
                 value={newContact.dob || ''}
                 onChange={(e) => setNewContact({ ...newContact, dob: e.target.value })}
                 className="w-full p-2 border border-gray-400 rounded"
@@ -294,4 +333,5 @@ const ContactManager = () => {
 };
 
 export default ContactManager;
+
 
