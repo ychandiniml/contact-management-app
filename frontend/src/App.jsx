@@ -71,7 +71,7 @@ const ContactManager = () => {
         name: input.Name,
         email: input.Email,
         phone: input.Phone,
-        dob: input['Date of Birth'],
+        dob: input['Dob'],
         age: parseInt(input.Age),
       }));
     };
